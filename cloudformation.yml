@@ -180,7 +180,7 @@ Resources:
               console.log('Profile change request:', body);
               
               // 必須フィールドの検証
-              const requiredFields = ['changeType', 'userDisplayName', 'userEmail'];
+              const requiredFields = ['changeType', 'userDisplayName'];
               for (const field of requiredFields) {
                   if (!body[field]) {
                       return {
@@ -200,12 +200,12 @@ Resources:
               const changeRequest = {
                   id: requestId,
                   timestamp: timestamp,
-                  userId: body.userId || body.userEmail.split('@')[0],
+                  userId: body.userId || body.lineWorksId || 'unknown',
                   changeType: body.changeType,
                   userDisplayName: body.userDisplayName,
-                  userEmail: body.userEmail,
+                  userEmail: body.userEmail || '',
+                  lineWorksId: body.lineWorksId || '',
                   status: 'pending',
-                  currentData: body.currentData || {},
                   newData: body.newData || {},
                   reason: body.reason || '',
                   createdAt: timestamp,

@@ -531,7 +531,7 @@
             const baseData = {
                 changeType: selectedChangeType,
                 userDisplayName: document.getElementById('userDisplayName').value,
-                userEmail: '',  // メールアドレスは空にする
+                userEmail: document.getElementById('userEmail').value + '@lineworks',  // LINE WORKS IDにドメインを追加
                 lineWorksId: document.getElementById('userEmail').value,  // LINE WORKS IDを送信
                 userId: document.getElementById('userId').value
             };
