@@ -154,7 +154,6 @@
             color: #6c757d;
         }
 
-        .current-data,
         .new-data {
             background-color: #f8f9ff;
             border: 1px solid #e1e5e9;
@@ -163,21 +162,10 @@
             margin-bottom: 20px;
         }
 
-        .current-data h3,
         .new-data h3 {
             font-size: 16px;
             margin-bottom: 16px;
             color: #333;
-        }
-
-        .current-data {
-            background-color: #fff3cd;
-            border-color: #ffeaa7;
-        }
-
-        .new-data {
-            background-color: #d4edda;
-            border-color: #c3e6cb;
         }
 
         .submit-button {
@@ -297,20 +285,8 @@
             <div class="form-section" id="address-form">
                 <h2>🏠 住所変更</h2>
                 
-                <div class="current-data">
-                    <h3>現在の住所</h3>
-                    <div class="form-group">
-                        <label for="currentZipCode">郵便番号</label>
-                        <input type="text" id="currentZipCode" placeholder="例: 123-4567">
-                    </div>
-                    <div class="form-group">
-                        <label for="currentAddress">住所</label>
-                        <textarea id="currentAddress" placeholder="現在の住所を入力してください"></textarea>
-                    </div>
-                </div>
-
                 <div class="new-data">
-                    <h3>新しい住所</h3>
+                    <h3>住所情報</h3>
                     <div class="form-group">
                         <label for="newZipCode">郵便番号</label>
                         <input type="text" id="newZipCode" placeholder="例: 123-4567" required>
@@ -331,20 +307,8 @@
             <div class="form-section" id="contact-form">
                 <h2>📞 連絡先変更</h2>
                 
-                <div class="current-data">
-                    <h3>現在の連絡先</h3>
-                    <div class="form-group">
-                        <label for="currentPhone">電話番号</label>
-                        <input type="tel" id="currentPhone" placeholder="例: 090-1234-5678">
-                    </div>
-                    <div class="form-group">
-                        <label for="currentEmergencyContact">緊急連絡先</label>
-                        <input type="tel" id="currentEmergencyContact" placeholder="例: 090-1234-5678">
-                    </div>
-                </div>
-
                 <div class="new-data">
-                    <h3>新しい連絡先</h3>
+                    <h3>連絡先情報</h3>
                     <div class="form-group">
                         <label for="newPhone">電話番号</label>
                         <input type="tel" id="newPhone" placeholder="例: 090-1234-5678" required>
@@ -365,28 +329,8 @@
             <div class="form-section" id="bankAccount-form">
                 <h2>🏦 口座変更</h2>
                 
-                <div class="current-data">
-                    <h3>現在の口座情報</h3>
-                    <div class="form-group">
-                        <label for="currentBankName">銀行名</label>
-                        <input type="text" id="currentBankName" placeholder="例: ○○銀行">
-                    </div>
-                    <div class="form-group">
-                        <label for="currentBranchName">支店名</label>
-                        <input type="text" id="currentBranchName" placeholder="例: ○○支店">
-                    </div>
-                    <div class="form-group">
-                        <label for="currentAccountNumber">口座番号</label>
-                        <input type="text" id="currentAccountNumber" placeholder="例: 1234567">
-                    </div>
-                    <div class="form-group">
-                        <label for="currentAccountName">口座名義</label>
-                        <input type="text" id="currentAccountName" placeholder="例: ヤマダ タロウ">
-                    </div>
-                </div>
-
                 <div class="new-data">
-                    <h3>新しい口座情報</h3>
+                    <h3>口座情報</h3>
                     <div class="form-group">
                         <label for="newBankName">銀行名</label>
                         <input type="text" id="newBankName" placeholder="例: ○○銀行" required>
@@ -592,16 +536,11 @@
                 userId: document.getElementById('userId').value
             };
 
-            let currentData = {};
             let newData = {};
             let reason = '';
 
             switch (selectedChangeType) {
                 case 'address':
-                    currentData = {
-                        zipCode: document.getElementById('currentZipCode').value,
-                        address: document.getElementById('currentAddress').value
-                    };
                     newData = {
                         zipCode: document.getElementById('newZipCode').value,
                         address: document.getElementById('newAddress').value
@@ -614,10 +553,6 @@
                     break;
 
                 case 'contact':
-                    currentData = {
-                        phone: document.getElementById('currentPhone').value,
-                        emergencyContact: document.getElementById('currentEmergencyContact').value
-                    };
                     newData = {
                         phone: document.getElementById('newPhone').value,
                         emergencyContact: document.getElementById('newEmergencyContact').value
@@ -630,12 +565,6 @@
                     break;
 
                 case 'bankAccount':
-                    currentData = {
-                        bankName: document.getElementById('currentBankName').value,
-                        branchName: document.getElementById('currentBranchName').value,
-                        accountNumber: document.getElementById('currentAccountNumber').value,
-                        accountName: document.getElementById('currentAccountName').value
-                    };
                     newData = {
                         bankName: document.getElementById('newBankName').value,
                         branchName: document.getElementById('newBranchName').value,
@@ -657,7 +586,6 @@
 
             return {
                 ...baseData,
-                currentData,
                 newData,
                 reason
             };
