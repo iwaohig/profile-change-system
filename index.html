@@ -73,6 +73,8 @@
             cursor: pointer;
             transition: all 0.3s ease;
             text-align: left;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
         }
 
         .change-type-button:hover {
@@ -436,55 +438,98 @@
         let selectedChangeType = null;
         let userProfile = null;
 
-        // WOFF初期化
-        woff.init({
-            appId: 'Gwb_BTfV562bnUxhhp81PA'  // 実際のWOFFアプリIDに変更してください
-        });
+        // WOFF SDKが読み込まれているか確認
+        if (typeof woff === 'undefined') {
+            console.error('WOFF SDK is not loaded');
+            alert('WOFFアプリ内で開いてください');
+        }
 
-        // ページ読み込み時の初期化
-        document.addEventListener('DOMContentLoaded', async () => {
+        // WOFF初期化とユーザー情報取得を実行
+        async function initializeWOFF() {
             try {
+                console.log('Initializing WOFF...');
+                
+                // WOFF初期化
+                await woff.init({
+                    appId: 'Gwb_BTfV562bnUxhhp81PA'
+                });
+                
+                console.log('WOFF initialized, getting profile...');
+                
                 // ユーザー情報取得
                 userProfile = await woff.getProfile();
-                document.getElementById('userDisplayName').value = userProfile.displayName;
-                document.getElementById('userEmail').value = userProfile.email;
-                document.getElementById('userId').value = userProfile.userId;
+                console.log('User profile:', userProfile);
                 
-                console.log('User profile loaded:', userProfile);
+                // フォームに設定
+                if (userProfile) {
+                    document.getElementById('userDisplayName').value = userProfile.displayName || '';
+                    document.getElementById('userEmail').value = userProfile.email || '';
+                    document.getElementById('userId').value = userProfile.userId || '';
+                    console.log('Profile data set to form');
+                }
+                
             } catch (error) {
-                console.error('Failed to get user profile:', error);
-                showMessage('ユーザー情報の取得に失敗しました', 'error');
+                console.error('WOFF initialization error:', error);
+                // デバッグ用のダミーデータ（本番では削除）
+                document.getElementById('userDisplayName').value = 'テストユーザー';
+                document.getElementById('userEmail').value = 'test@example.com';
+                showMessage('WOFF初期化エラー: ' + error.message, 'error');
             }
+        }
 
+        // ページ読み込み時の初期化
+        window.addEventListener('load', async () => {
+            console.log('Page loaded, initializing...');
+            
+            // WOFF初期化
+            await initializeWOFF();
+            
             // 変更種類ボタンのイベントリスナー
             document.querySelectorAll('.change-type-button').forEach(button => {
-                button.addEventListener('click', () => {
-                    selectChangeType(button.dataset.type);
+                button.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log('Button clicked:', this.dataset.type);
+                    selectChangeType(this.dataset.type);
                 });
             });
 
             // 送信ボタンのイベントリスナー
             document.getElementById('submitButton').addEventListener('click', submitForm);
+            
+            console.log('Event listeners attached');
         });
 
         // 変更種類選択
         function selectChangeType(type) {
+            console.log('Selecting change type:', type);
             selectedChangeType = type;
             
             // ボタンの状態更新
             document.querySelectorAll('.change-type-button').forEach(btn => {
                 btn.classList.remove('active');
             });
-            document.querySelector(`[data-type="${type}"]`).classList.add('active');
+            const selectedButton = document.querySelector(`[data-type="${type}"]`);
+            if (selectedButton) {
+                selectedButton.classList.add('active');
+                console.log('Button activated:', type);
+            }
             
             // フォームセクションの表示切り替え
             document.querySelectorAll('.form-section').forEach(section => {
                 section.classList.remove('active');
             });
-            document.getElementById(`${type}-form`).classList.add('active');
+            const formSection = document.getElementById(`${type}-form`);
+            if (formSection) {
+                formSection.classList.add('active');
+                console.log('Form section activated:', type);
+            }
             
             // 送信ボタンを表示
-            document.getElementById('submitButton').style.display = 'block';
+            const submitButton = document.getElementById('submitButton');
+            if (submitButton) {
+                submitButton.style.display = 'block';
+                console.log('Submit button shown');
+            }
         }
 
         // フォーム送信
