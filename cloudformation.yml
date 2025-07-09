@@ -1,0 +1,582 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Profile Change System - WOFF Form + Bot Notification'
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name prefix for resources
+    Type: String
+    Default: 'profile-change'
+  
+  BotId:
+    Type: String
+    Description: 'LINE WORKS Bot ID for notifications'
+    Default: '10248294'  # 既存の体験申込システムと同じBot ID
+  
+  BotChannelId:
+    Type: String
+    NoEcho: true
+    Description: 'LINE WORKS Bot Channel ID (Room ID)'
+    Default: '05a3d91c-c172-893a-e6d3-3bd1e0ce1920'  # 既存のチャンネル
+
+Resources:
+  # DynamoDB Table for Profile Changes
+  ProfileChangesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${EnvironmentName}-requests'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: TimestampIndex
+          KeySchema:
+            - AttributeName: timestamp
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: StatusIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Application
+          Value: ProfileChangeSystem
+
+  # IAM Role for Lambda
+  ProfileChangeLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-lambda-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                Resource: 
+                  - !GetAtt ProfileChangesTable.Arn
+                  - !Sub '${ProfileChangesTable.Arn}/index/*'
+                  - 'arn:aws:dynamodb:ap-northeast-1:785864752295:table/iwaoh-child-eng-tokens'  # 既存のトークンテーブル
+
+  # Lambda Function for Profile Changes
+  ProfileChangeLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${EnvironmentName}-api'
+      Runtime: nodejs18.x
+      Handler: index.handler
+      Role: !GetAtt ProfileChangeLambdaRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Environment:
+        Variables:
+          PROFILE_CHANGES_TABLE: !Ref ProfileChangesTable
+          TOKEN_TABLE: 'iwaoh-child-eng-tokens'
+          BOT_ID: !Ref BotId
+          CHANNEL_ID: !Ref BotChannelId
+          CORS_ORIGIN: '*'
+      Code:
+        ZipFile: |
+          const { DynamoDBClient, PutItemCommand, ScanCommand, GetItemCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
+          const { marshall, unmarshall } = require('@aws-sdk/util-dynamodb');
+          const https = require('https');
+
+          const dynamodb = new DynamoDBClient({ region: process.env.AWS_REGION || 'ap-northeast-1' });
+
+          // 環境変数
+          const PROFILE_CHANGES_TABLE = process.env.PROFILE_CHANGES_TABLE;
+          const TOKEN_TABLE = process.env.TOKEN_TABLE;
+          const BOT_ID = process.env.BOT_ID;
+          const CHANNEL_ID = process.env.CHANNEL_ID;
+
+          exports.handler = async (event) => {
+              const headers = {
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                  'Access-Control-Allow-Methods': 'GET, POST, PUT, OPTIONS',
+                  'Content-Type': 'application/json'
+              };
+
+              try {
+                  if (event.httpMethod === 'OPTIONS') {
+                      return { statusCode: 200, headers, body: JSON.stringify({ message: 'OK' }) };
+                  }
+
+                  if (event.httpMethod === 'POST') {
+                      return await handleProfileChangeRequest(event, headers);
+                  }
+
+                  if (event.httpMethod === 'GET') {
+                      return await getProfileChangeRequests(event, headers);
+                  }
+
+                  if (event.httpMethod === 'PUT') {
+                      return await updateProfileChangeStatus(event, headers);
+                  }
+
+                  return {
+                      statusCode: 405,
+                      headers,
+                      body: JSON.stringify({ error: 'Method not allowed' })
+                  };
+              } catch (error) {
+                  console.error('Error:', error);
+                  return {
+                      statusCode: 500,
+                      headers,
+                      body: JSON.stringify({
+                          success: false,
+                          error: 'Internal server error',
+                          message: error.message
+                      })
+                  };
+              }
+          };
+
+          async function handleProfileChangeRequest(event, headers) {
+              const body = JSON.parse(event.body);
+              console.log('Profile change request:', body);
+              
+              // 必須フィールドの検証
+              const requiredFields = ['changeType', 'userDisplayName', 'userEmail'];
+              for (const field of requiredFields) {
+                  if (!body[field]) {
+                      return {
+                          statusCode: 400,
+                          headers,
+                          body: JSON.stringify({
+                              success: false,
+                              error: `Missing required field: ${field}`
+                          })
+                      };
+                  }
+              }
+              
+              const timestamp = new Date().toISOString();
+              const requestId = `change_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              
+              const changeRequest = {
+                  id: requestId,
+                  timestamp: timestamp,
+                  userId: body.userId || body.userEmail.split('@')[0],
+                  changeType: body.changeType,
+                  userDisplayName: body.userDisplayName,
+                  userEmail: body.userEmail,
+                  status: 'pending',
+                  currentData: body.currentData || {},
+                  newData: body.newData || {},
+                  reason: body.reason || '',
+                  createdAt: timestamp,
+                  updatedAt: timestamp
+              };
+              
+              try {
+                  // DynamoDBに保存
+                  const params = {
+                      TableName: PROFILE_CHANGES_TABLE,
+                      Item: marshall(changeRequest, { removeUndefinedValues: true })
+                  };
+                  
+                  await dynamodb.send(new PutItemCommand(params));
+                  console.log('Profile change request saved:', requestId);
+                  
+                  // Bot通知を送信
+                  try {
+                      await sendProfileChangeNotification(changeRequest);
+                  } catch (notificationError) {
+                      console.error('Bot notification failed but request saved:', notificationError.message);
+                  }
+                  
+                  return {
+                      statusCode: 200,
+                      headers,
+                      body: JSON.stringify({
+                          success: true,
+                          message: 'Profile change request submitted successfully',
+                          requestId: requestId,
+                          timestamp: timestamp
+                      })
+                  };
+              } catch (error) {
+                  console.error('Profile change request error:', error);
+                  throw error;
+              }
+          }
+
+          async function getProfileChangeRequests(event, headers) {
+              try {
+                  const userId = event.queryStringParameters?.userId;
+                  const status = event.queryStringParameters?.status;
+                  
+                  let params = {
+                      TableName: PROFILE_CHANGES_TABLE
+                  };
+                  
+                  if (userId) {
+                      params.IndexName = 'UserIdIndex';
+                      params.KeyConditionExpression = 'userId = :userId';
+                      params.ExpressionAttributeValues = marshall({ ':userId': userId });
+                  } else if (status) {
+                      params.IndexName = 'StatusIndex';
+                      params.KeyConditionExpression = '#status = :status';
+                      params.ExpressionAttributeNames = { '#status': 'status' };
+                      params.ExpressionAttributeValues = marshall({ ':status': status });
+                  }
+                  
+                  const command = params.KeyConditionExpression ? 
+                      new (require('@aws-sdk/client-dynamodb').QueryCommand)(params) : 
+                      new ScanCommand(params);
+                  
+                  const result = await dynamodb.send(command);
+                  const requests = result.Items ? result.Items.map(item => unmarshall(item)) : [];
+                  
+                  // 日付順でソート（新しい順）
+                  requests.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                  
+                  return {
+                      statusCode: 200,
+                      headers,
+                      body: JSON.stringify({
+                          success: true,
+                          data: requests
+                      })
+                  };
+              } catch (error) {
+                  console.error('Get profile change requests error:', error);
+                  throw error;
+              }
+          }
+
+          async function updateProfileChangeStatus(event, headers) {
+              const body = JSON.parse(event.body);
+              const requestId = event.pathParameters?.id;
+              
+              if (!requestId || !body.status) {
+                  return {
+                      statusCode: 400,
+                      headers,
+                      body: JSON.stringify({
+                          success: false,
+                          error: 'Missing requestId or status'
+                      })
+                  };
+              }
+              
+              try {
+                  const params = {
+                      TableName: PROFILE_CHANGES_TABLE,
+                      Key: marshall({ id: requestId }),
+                      UpdateExpression: 'SET #status = :status, updatedAt = :updatedAt',
+                      ExpressionAttributeNames: { '#status': 'status' },
+                      ExpressionAttributeValues: marshall({
+                          ':status': body.status,
+                          ':updatedAt': new Date().toISOString()
+                      }),
+                      ReturnValues: 'ALL_NEW'
+                  };
+                  
+                  const result = await dynamodb.send(new UpdateItemCommand(params));
+                  const updatedRequest = unmarshall(result.Attributes);
+                  
+                  // ステータス変更通知
+                  try {
+                      await sendStatusUpdateNotification(updatedRequest);
+                  } catch (notificationError) {
+                      console.error('Status update notification failed:', notificationError.message);
+                  }
+                  
+                  return {
+                      statusCode: 200,
+                      headers,
+                      body: JSON.stringify({
+                          success: true,
+                          message: 'Status updated successfully',
+                          data: updatedRequest
+                      })
+                  };
+              } catch (error) {
+                  console.error('Update status error:', error);
+                  throw error;
+              }
+          }
+
+          async function getAccessToken() {
+              try {
+                  const params = {
+                      TableName: TOKEN_TABLE,
+                      Key: { id: { S: 'line-works-token' } }
+                  };
+                  
+                  const command = new GetItemCommand(params);
+                  const result = await dynamodb.send(command);
+                  
+                  if (!result.Item) {
+                      throw new Error('Token not found in DynamoDB');
+                  }
+                  
+                  const tokenData = unmarshall(result.Item);
+                  return tokenData.accessToken;
+              } catch (error) {
+                  console.error('Failed to get access token:', error);
+                  throw error;
+              }
+          }
+
+          async function sendProfileChangeNotification(changeRequest) {
+              if (!CHANNEL_ID) {
+                  console.log('Channel ID not configured, skipping notification');
+                  return;
+              }
+              
+              const accessToken = await getAccessToken();
+              
+              const changeTypeNames = {
+                  'address': '住所変更',
+                  'contact': '連絡先変更',
+                  'bankAccount': '口座変更'
+              };
+              
+              const message = {
+                  content: {
+                      type: 'text',
+                      text: '📝 登録情報変更申請がありました！\\n\\n🔄 変更種類: ' + (changeTypeNames[changeRequest.changeType] || changeRequest.changeType) + '\\n👤 申請者: ' + changeRequest.userDisplayName + '\\n📧 メール: ' + changeRequest.userEmail + '\\n📅 申請日時: ' + new Date(changeRequest.timestamp).toLocaleString('ja-JP') + '\\n📋 ステータス: ' + changeRequest.status + '\\n\\n' + (changeRequest.reason ? '理由: ' + changeRequest.reason + '\\n\\n' : '') + '申請ID: ' + changeRequest.id
+                  }
+              };
+              
+              return sendToChannel(message, accessToken);
+          }
+
+          async function sendStatusUpdateNotification(changeRequest) {
+              if (!CHANNEL_ID) return;
+              
+              const accessToken = await getAccessToken();
+              
+              const statusNames = {
+                  'pending': '処理中',
+                  'approved': '承認済み',
+                  'rejected': '却下',
+                  'completed': '完了'
+              };
+              
+              const message = {
+                  content: {
+                      type: 'text',
+                      text: '✅ 登録情報変更のステータスが更新されました！\\n\\n申請ID: ' + changeRequest.id + '\\n申請者: ' + changeRequest.userDisplayName + '\\nステータス: ' + (statusNames[changeRequest.status] || changeRequest.status) + '\\n更新日時: ' + new Date(changeRequest.updatedAt).toLocaleString('ja-JP')
+                  }
+              };
+              
+              return sendToChannel(message, accessToken);
+          }
+
+          async function sendToChannel(message, accessToken) {
+              const data = JSON.stringify(message);
+              
+              const options = {
+                  hostname: 'www.worksapis.com',
+                  path: `/v1.0/bots/${BOT_ID}/channels/${encodeURIComponent(CHANNEL_ID)}/messages`,
+                  method: 'POST',
+                  headers: {
+                      'Authorization': `Bearer ${accessToken}`,
+                      'Content-Type': 'application/json',
+                      'Content-Length': Buffer.byteLength(data)
+                  }
+              };
+              
+              return new Promise((resolve, reject) => {
+                  const req = https.request(options, (res) => {
+                      let responseData = '';
+                      res.on('data', (chunk) => responseData += chunk);
+                      res.on('end', () => {
+                          if (res.statusCode === 200 || res.statusCode === 201) {
+                              console.log('Profile change notification sent successfully');
+                              resolve();
+                          } else {
+                              console.error(`Failed to send notification: ${res.statusCode} - ${responseData}`);
+                              reject(new Error(`Failed to send notification: ${res.statusCode}`));
+                          }
+                      });
+                  });
+                  
+                  req.on('error', (error) => {
+                      console.error('Notification request error:', error);
+                      reject(error);
+                  });
+                  
+                  req.write(data);
+                  req.end();
+              });
+          }
+
+  # API Gateway
+  ProfileChangeApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub '${EnvironmentName}-api'
+      Description: 'Profile Change System API'
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # API Gateway Resource
+  ProfileChangeResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ProfileChangeApiGateway
+      ParentId: !GetAtt ProfileChangeApiGateway.RootResourceId
+      PathPart: 'changes'
+
+  # API Gateway Resource for Status Updates
+  ProfileChangeStatusResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ProfileChangeApiGateway
+      ParentId: !Ref ProfileChangeResource
+      PathPart: '{id}'
+
+  # API Gateway Methods
+  ProfileChangePostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ProfileChangeApiGateway
+      ResourceId: !Ref ProfileChangeResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProfileChangeLambda.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ProfileChangeGetMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ProfileChangeApiGateway
+      ResourceId: !Ref ProfileChangeResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProfileChangeLambda.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ProfileChangeOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ProfileChangeApiGateway
+      ResourceId: !Ref ProfileChangeResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProfileChangeLambda.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  ProfileChangeStatusPutMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ProfileChangeApiGateway
+      ResourceId: !Ref ProfileChangeStatusResource
+      HttpMethod: PUT
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProfileChangeLambda.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+
+  # Lambda Permissions
+  ProfileChangeLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ProfileChangeLambda
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ProfileChangeApiGateway}/*/*'
+
+  # API Gateway Deployment
+  ProfileChangeApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ProfileChangePostMethod
+      - ProfileChangeGetMethod
+      - ProfileChangeOptionsMethod
+      - ProfileChangeStatusPutMethod
+    Properties:
+      RestApiId: !Ref ProfileChangeApiGateway
+      StageName: prod
+      Description: 'Production stage for Profile Change API'
+
+Outputs:
+  ApiEndpoint:
+    Description: 'Profile Change API Gateway endpoint URL'
+    Value: !Sub 'https://${ProfileChangeApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod'
+    Export:
+      Name: !Sub '${EnvironmentName}-api-endpoint'
+
+  ProfileChangesTableName:
+    Description: 'Profile changes table name'
+    Value: !Ref ProfileChangesTable
+    Export:
+      Name: !Sub '${EnvironmentName}-table-name'
+
+  ProfileChangeLambdaArn:
+    Description: 'Profile change Lambda function ARN'
+    Value: !GetAtt ProfileChangeLambda.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-lambda-arn'
