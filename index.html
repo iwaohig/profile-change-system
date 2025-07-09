@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>登録情報変更申請</title>
-    <script src="https://static.worksmobile.net/static/wm/woff/woff.js"></script>
+    <script charset="utf-8" src="https://static.worksmobile.net/static/wm/woff/edge/3.7.1/sdk.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -438,51 +438,47 @@
         let selectedChangeType = null;
         let userProfile = null;
 
-        // WOFF SDKが読み込まれているか確認
-        if (typeof woff === 'undefined') {
-            console.error('WOFF SDK is not loaded');
-            alert('WOFFアプリ内で開いてください');
-        }
-
-        // WOFF初期化とユーザー情報取得を実行
-        async function initializeWOFF() {
-            try {
-                console.log('Initializing WOFF...');
-                
-                // WOFF初期化
-                await woff.init({
-                    appId: '-Ukp496e9FuVCFxS5NT_8Q'
-                });
-                
-                console.log('WOFF initialized, getting profile...');
-                
-                // ユーザー情報取得
-                userProfile = await woff.getProfile();
-                console.log('User profile:', userProfile);
-                
-                // フォームに設定
-                if (userProfile) {
-                    document.getElementById('userDisplayName').value = userProfile.displayName || '';
-                    document.getElementById('userEmail').value = userProfile.email || '';
-                    document.getElementById('userId').value = userProfile.userId || '';
-                    console.log('Profile data set to form');
-                }
-                
-            } catch (error) {
-                console.error('WOFF initialization error:', error);
-                // デバッグ用のダミーデータ（本番では削除）
-                document.getElementById('userDisplayName').value = 'テストユーザー';
-                document.getElementById('userEmail').value = 'test@example.com';
-                showMessage('WOFF初期化エラー: ' + error.message, 'error');
-            }
-        }
-
-        // ページ読み込み時の初期化
-        window.addEventListener('load', async () => {
-            console.log('Page loaded, initializing...');
+        // WOFF初期化（ページ読み込み直後に実行）
+        console.log('Starting WOFF initialization...');
+        
+        // woff.init()を直接実行
+        woff.init({
+            woffId: '-Ukp496e9FuVCFxS5NT_8Q'
+        })
+        .then(() => {
+            console.log('WOFF initialized successfully');
+            // ユーザー情報取得
+            return woff.getProfile();
+        })
+        .then((profile) => {
+            console.log('User profile:', profile);
+            userProfile = profile;
             
-            // WOFF初期化
-            await initializeWOFF();
+            // フォームに設定
+            if (userProfile) {
+                document.getElementById('userDisplayName').value = userProfile.displayName || '';
+                document.getElementById('userEmail').value = userProfile.email || '';
+                document.getElementById('userId').value = userProfile.userId || '';
+                console.log('Profile data set to form');
+            }
+            
+            // イベントリスナー設定
+            setupEventListeners();
+        })
+        .catch((err) => {
+            console.error('WOFF error:', err);
+            if (err.code === 'INIT_FAILED') {
+                showMessage('WOFF初期化エラー: URLが正しくない可能性があります', 'error');
+            } else if (!woff.isInClient()) {
+                showMessage('このページはLINE WORKSアプリ内で開いてください', 'error');
+            } else {
+                showMessage('エラー: ' + (err.message || err), 'error');
+            }
+        });
+
+        // イベントリスナーの設定
+        function setupEventListeners() {
+            console.log('Setting up event listeners...');
             
             // 変更種類ボタンのイベントリスナー
             document.querySelectorAll('.change-type-button').forEach(button => {
@@ -497,7 +493,7 @@
             document.getElementById('submitButton').addEventListener('click', submitForm);
             
             console.log('Event listeners attached');
-        });
+        }
 
         // 変更種類選択
         function selectChangeType(type) {
