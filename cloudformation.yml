@@ -378,28 +378,30 @@ Resources:
                   'bankAccount': '口座変更'
               };
               
-              const messageText = [
-                  '📝 登録情報変更申請がありました！',
-                  '',
-                  '🔄 変更種類: ' + (changeTypeNames[changeRequest.changeType] || changeRequest.changeType),
-                  '👤 申請者: ' + changeRequest.userDisplayName,
-                  '🆔 LINE WORKS ID: ' + (changeRequest.lineWorksId || 'N/A'),
-                  '📅 申請日時: ' + new Date(changeRequest.timestamp).toLocaleString('ja-JP'),
-                  '📋 ステータス: ' + changeRequest.status,
-                  ''
-              ];
+              let messageText = '📝 登録情報変更申請がありました！';
+              messageText += String.fromCharCode(10) + String.fromCharCode(10);
+              messageText += '🔄 変更種類: ' + (changeTypeNames[changeRequest.changeType] || changeRequest.changeType);
+              messageText += String.fromCharCode(10);
+              messageText += '👤 申請者: ' + changeRequest.userDisplayName;
+              messageText += String.fromCharCode(10);
+              messageText += '🆔 LINE WORKS ID: ' + (changeRequest.lineWorksId || 'N/A');
+              messageText += String.fromCharCode(10);
+              messageText += '📅 申請日時: ' + new Date(changeRequest.timestamp).toLocaleString('ja-JP');
+              messageText += String.fromCharCode(10);
+              messageText += '📋 ステータス: ' + changeRequest.status;
+              messageText += String.fromCharCode(10) + String.fromCharCode(10);
               
               if (changeRequest.reason) {
-                  messageText.push('理由: ' + changeRequest.reason);
-                  messageText.push('');
+                  messageText += '理由: ' + changeRequest.reason;
+                  messageText += String.fromCharCode(10) + String.fromCharCode(10);
               }
               
-              messageText.push('申請ID: ' + changeRequest.id);
+              messageText += '申請ID: ' + changeRequest.id;
               
               const message = {
                   content: {
                       type: 'text',
-                      text: messageText.join('\\n')
+                      text: messageText
                   }
               };
               
@@ -418,19 +420,20 @@ Resources:
                   'completed': '完了'
               };
               
-              const statusMessageText = [
-                  '✅ 登録情報変更のステータスが更新されました！',
-                  '',
-                  '申請ID: ' + changeRequest.id,
-                  '申請者: ' + changeRequest.userDisplayName,
-                  'ステータス: ' + (statusNames[changeRequest.status] || changeRequest.status),
-                  '更新日時: ' + new Date(changeRequest.updatedAt).toLocaleString('ja-JP')
-              ];
+              let statusMessageText = '✅ 登録情報変更のステータスが更新されました！';
+              statusMessageText += String.fromCharCode(10) + String.fromCharCode(10);
+              statusMessageText += '申請ID: ' + changeRequest.id;
+              statusMessageText += String.fromCharCode(10);
+              statusMessageText += '申請者: ' + changeRequest.userDisplayName;
+              statusMessageText += String.fromCharCode(10);
+              statusMessageText += 'ステータス: ' + (statusNames[changeRequest.status] || changeRequest.status);
+              statusMessageText += String.fromCharCode(10);
+              statusMessageText += '更新日時: ' + new Date(changeRequest.updatedAt).toLocaleString('ja-JP');
               
               const message = {
                   content: {
                       type: 'text',
-                      text: statusMessageText.join('\\n')
+                      text: statusMessageText
                   }
               };
               
