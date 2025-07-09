@@ -378,10 +378,28 @@ Resources:
                   'bankAccount': '口座変更'
               };
               
+              const messageText = [
+                  '📝 登録情報変更申請がありました！',
+                  '',
+                  '🔄 変更種類: ' + (changeTypeNames[changeRequest.changeType] || changeRequest.changeType),
+                  '👤 申請者: ' + changeRequest.userDisplayName,
+                  '🆔 LINE WORKS ID: ' + (changeRequest.lineWorksId || 'N/A'),
+                  '📅 申請日時: ' + new Date(changeRequest.timestamp).toLocaleString('ja-JP'),
+                  '📋 ステータス: ' + changeRequest.status,
+                  ''
+              ];
+              
+              if (changeRequest.reason) {
+                  messageText.push('理由: ' + changeRequest.reason);
+                  messageText.push('');
+              }
+              
+              messageText.push('申請ID: ' + changeRequest.id);
+              
               const message = {
                   content: {
                       type: 'text',
-                      text: '📝 登録情報変更申請がありました！\\n\\n🔄 変更種類: ' + (changeTypeNames[changeRequest.changeType] || changeRequest.changeType) + '\\n👤 申請者: ' + changeRequest.userDisplayName + '\\n📧 メール: ' + changeRequest.userEmail + '\\n📅 申請日時: ' + new Date(changeRequest.timestamp).toLocaleString('ja-JP') + '\\n📋 ステータス: ' + changeRequest.status + '\\n\\n' + (changeRequest.reason ? '理由: ' + changeRequest.reason + '\\n\\n' : '') + '申請ID: ' + changeRequest.id
+                      text: messageText.join('\\n')
                   }
               };
               
@@ -400,10 +418,19 @@ Resources:
                   'completed': '完了'
               };
               
+              const statusMessageText = [
+                  '✅ 登録情報変更のステータスが更新されました！',
+                  '',
+                  '申請ID: ' + changeRequest.id,
+                  '申請者: ' + changeRequest.userDisplayName,
+                  'ステータス: ' + (statusNames[changeRequest.status] || changeRequest.status),
+                  '更新日時: ' + new Date(changeRequest.updatedAt).toLocaleString('ja-JP')
+              ];
+              
               const message = {
                   content: {
                       type: 'text',
-                      text: '✅ 登録情報変更のステータスが更新されました！\\n\\n申請ID: ' + changeRequest.id + '\\n申請者: ' + changeRequest.userDisplayName + '\\nステータス: ' + (statusNames[changeRequest.status] || changeRequest.status) + '\\n更新日時: ' + new Date(changeRequest.updatedAt).toLocaleString('ja-JP')
+                      text: statusMessageText.join('\\n')
                   }
               };
               
