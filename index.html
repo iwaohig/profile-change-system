@@ -267,8 +267,8 @@
             </div>
 
             <div class="form-group readonly">
-                <label for="userEmail">メールアドレス</label>
-                <input type="email" id="userEmail" readonly>
+                <label for="userEmail">LINE WORKS ID</label>
+                <input type="text" id="userEmail" readonly>
             </div>
 
             <!-- 変更種類選択 -->
@@ -457,7 +457,7 @@
             // フォームに設定
             if (userProfile) {
                 document.getElementById('userDisplayName').value = userProfile.displayName || '';
-                document.getElementById('userEmail').value = userProfile.email || '';
+                document.getElementById('userEmail').value = userProfile.userId || '';  // LINE WORKS IDを表示
                 document.getElementById('userId').value = userProfile.userId || '';
                 console.log('Profile data set to form');
             }
@@ -587,7 +587,8 @@
             const baseData = {
                 changeType: selectedChangeType,
                 userDisplayName: document.getElementById('userDisplayName').value,
-                userEmail: document.getElementById('userEmail').value,
+                userEmail: '',  // メールアドレスは空にする
+                lineWorksId: document.getElementById('userEmail').value,  // LINE WORKS IDを送信
                 userId: document.getElementById('userId').value
             };
 
